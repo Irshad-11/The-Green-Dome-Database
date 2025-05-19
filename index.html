@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CSV Database Website</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            max-width: 800px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+        h1, h2 {
+            text-align: center;
+        }
+        .form-container {
+            margin-bottom: 20px;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+        }
+        .form-container input {
+            margin: 5px;
+            padding: 8px;
+            width: calc(100% - 20px);
+            box-sizing: border-box;
+        }
+        .form-container button {
+            padding: 8px 15px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+        .form-container button:hover {
+            background-color: #45a049;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 10px;
+            text-align: left;
+        }
+        th {
+            background-color: #f2f2f2;
+        }
+        .action-buttons button {
+            padding: 5px 10px;
+            margin-right: 5px;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+        .edit-btn {
+            background-color: #008CBA;
+            color: white;
+        }
+        .edit-btn:hover {
+            background-color: #007399;
+        }
+        .delete-btn {
+            background-color: #f44336;
+            color: white;
+        }
+        .delete-btn:hover {
+            background-color: #da190b;
+        }
+        .error {
+            color: red;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <h1>CSV Database Website</h1>
+    <div class="form-container">
+        <h2>Add/Edit Data</h2>
+        <input type="hidden" id="editIndex" value="">
+        <input type="text" id="name" placeholder="Enter name" required>
+        <input type="text" id="message" placeholder="Enter message" required>
+        <button onclick="submitData()">Submit</button>
+    </div>
+    <h2>Data Table</h2>
+    <div id="error" class="error"></div>
+    <table>
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Message</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody id="tableBody"></tbody>
+    </table>
+
+    <script>
+        const repoOwner = "Irshad-11"; // Replace with your GitHub username
+        const repoName = "The-Green-Dome-Database"; // Replace with your repository name
+        const filePath = "data.csv"; // Path to CSV in repo
+        const token = "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"; // Replace with your GitHub Personal Access Token
+
+        let csvData = [];
+
+        // Display error message
+        function showError(message) {
+            document.getElementById("error").innerText = message;
+            setTimeout(() => document.getElementById("error").innerText = "", 5000);
+        }
+
+        // Fetch and display CSV data
+        async function loadData() {
+            try {
+                const response = await fetch(`https://raw.githubusercontent.com/${repoOwner}/${repoName}/main/${filePath}`);
+                if (!response.ok) throw new Error("Failed to fetch CSV");
+                const csvText = await response.text();
+                csvData = csvText.trim().split("\n").map(row => row.split(","));
+                const tableBody = document.getElementById("tableBody");
+                tableBody.innerHTML = "";
+                // Skip header row
+                for (let i = 1; i < csvData.length; i++) {
+                    const row = csvData[i];
+                    const tr = document.createElement("tr");
+                    tr.innerHTML = `
+                        <td>${row[0]}</td>
+                        <td>${row[1]}</td>
+                        <td class="action-buttons">
+                            <button class="edit-btn" onclick="editData(${i})">Edit</button>
+                            <button class="delete-btn" onclick="deleteData(${i})">Delete</button>
+                        </td>`;
+                    tableBody.appendChild(tr);
+                }
+            } catch (error) {
+                showError("Error loading data: " + error.message);
+            }
+        }
+
+        // Get current CSV file details (content and SHA)
+        async function getFileDetails() {
+            const response = await fetch(`https://api.github.com/repos/${repoOwner}/${repoName}/contents/${filePath}`, {
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                    Accept: "application/vnd.github.v3+json"
+                }
+            });
+            if (!response.ok) throw new Error("Failed to fetch file details");
+            return await response.json();
+        }
+
+        // Update CSV file via GitHub API
+        async function updateFile(newContent) {
+            try {
+                const fileDetails = await getFileDetails();
+                const encodedContent = btoa(newContent); // Encode to base64
+                const response = await fetch(`https://api.github.com/repos/${repoOwner}/${repoName}/contents/${filePath}`, {
+                    method: "PUT",
+                    headers: {
+                        Authorization: `Bearer ${token}`,
+                        Accept: "application/vnd.github.v3+json"
+                    },
+                    body: JSON.stringify({
+                        message: "Update data.csv",
+                        content: encodedContent,
+                        sha: fileDetails.sha
+                    })
+                });
+                if (!response.ok) throw new Error("Failed to update file");
+                await loadData(); // Refresh data
+            } catch (error) {
+                showError("Error updating data: " + error.message);
+            }
+        }
+
+        // Submit data (Create or Update)
+        async function submitData() {
+            const editIndex = document.getElementById("editIndex").value;
+            const name = document.getElementById("name").value.trim();
+            const message = document.getElementById("message").value.trim();
+            if (!name || !message) {
+                showError("Please fill in both fields");
+                return;
+            }
+            if (editIndex === "") {
+                // Create: Append new row
+                csvData.push([name, message]);
+            } else {
+                // Update: Modify existing row
+                csvData[parseInt(editIndex)] = [name, message];
+            }
+            const newContent = csvData.map(row => row.join(",")).join("\n");
+            await updateFile(newContent);
+            document.getElementById("editIndex").value = "";
+            document.getElementById("name").value = "";
+            document.getElementById("message").value = "";
+        }
+
+        // Edit data
+        function editData(index) {
+            document.getElementById("editIndex").value = index;
+            document.getElementById("name").value = csvData[index][0];
+            document.getElementById("message").value = csvData[index][1];
+        }
+
+        // Delete data
+        async function deleteData(index) {
+            if (confirm("Are you sure you want to delete this entry?")) {
+                csvData.splice(index, 1); // Remove row
+                const newContent = csvData.map(row => row.join(",")).join("\n");
+                await updateFile(newContent);
+            }
+        }
+
+        // Load data on page load
+        loadData();
+    </script>
+</body>
+</html>
